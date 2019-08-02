@@ -105,7 +105,7 @@ def main():
             seqtab_reorder,
             left_on='label',
             right_index=True
-        ).to_csv(sharetable_fn, index=False)        
+        ).to_csv(sharetable_fn, index=False, sep='\t')        
 
     # Cleanup.
     if out_sv_seqs_h:
