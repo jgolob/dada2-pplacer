@@ -68,18 +68,17 @@ def main():
     # Reduce memory use by streaming in and using sparse structures
     seqtab_T = pd.DataFrame()
 
-    with open(args.seqtable, 'rt') as seqtab_h:
-        seqtab_reader = csv.reader(seqtab_h)
-        # Get the header, which are the SV sequences themselves
-        sv_header = next(seqtab_reader)[1:]
-        for r in seqtab_reader:
-            specimen = r[0]
-            counts = [int(c) for c in r[1:]]
-            seqtab_T[specimen] = pd.SparseArray(
-                counts,
-                dtype=int,
-                fill_value=0
-            )
+    seqtab_reader = csv.reader(args.seqtable)
+    # Get the header, which are the SV sequences themselves
+    sv_header = next(seqtab_reader)[1:]
+    for r in seqtab_reader:
+        specimen = r[0]
+        counts = [int(c) for c in r[1:]]
+        seqtab_T[specimen] = pd.SparseArray(
+            counts,
+            dtype=int,
+            fill_value=0
+        )
     logging.info("DADA2 Seqtable loaded")
     # Order the SV via their mean relative abundance\
     logging.info("Ordering SV by mean relative abundance")
