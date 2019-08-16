@@ -3,7 +3,9 @@ import pandas as pd
 import csv
 import argparse
 import sys
+import logging
 
+logging.basicConfig(format='DADA-pplacer-mothur:%(levelname)s:%(asctime)s:%(message)s', level=logging.INFO)
 
 def main():
     args_parser = argparse.ArgumentParser(description="""A small utility to convert dada2 style
@@ -51,19 +53,37 @@ def main():
         sharetable_fn = args.sharetable
     else:
         sharetable_fn = None
-
+    logging.info("Loading DADA2 seqtable")
     # Load the sequence table
-    seqtab = pd.read_csv(args.seqtable, index_col=0)
-    # Rank order the sequences in order of mean relative abundance
-    rank_ordered_seqs = list((seqtab.T / seqtab.T.sum()).T.mean().sort_values(ascending=False).index)
 
+    # Reduce memory use by streaming in and using sparse structures
+    seqtab_T = pd.DataFrame()
+
+    with open(args.seqtable, 'rt') as seqtab_h:
+        seqtab_reader = csv.reader(seqtab_h)
+        # Get the header, which are the SV sequences themselves
+        sv_header = next(seqtab_reader)[1:]
+        for r in seqtab_reader:
+            specimen = r[0]
+            counts = [int(c) for c in r[1:]]
+            seqtab_T[specimen] = pd.SparseArray(
+                counts,
+                dtype=int,
+                fill_value=0
+            )
+    logging.info("DADA2 Seqtable loaded")
+    # Order the SV via their mean relative abundance
+    ordered_sv_idx = list((seqtab_T / seqtab_T.sum(axis=0)).mean(axis=1).sort_values(ascending=False).index)
+    
     # Generate sv labels for each sequence variant,
-    # and create a dictionary that maps sequence-variant to sv_id...
-    seq_to_sv_num = {s: 'sv-%d' % (i + 1) for i, s in enumerate(rank_ordered_seqs)}
-    # and a dictionary to map sv_id to sequence-variant
-    sv_num_to_seq = {'sv-%d' % (i + 1): s for i, s in enumerate(rank_ordered_seqs)}
-    # reorder and rename our columns to fit these new mappings
-    seqtab_reorder = seqtab[list(sv_num_to_seq.values())].rename(seq_to_sv_num, axis=1).sort_index()
+    # and generate a dictionary to map sv_id to sequence-variant
+    seq_idx_to_sv_num = {idx: 'sv-%d' % (i + 1) for i, idx in enumerate(ordered_sv_idx)}
+    # Transpose, Reorder and Rename into a new seqtab
+    seqtab_reorder = pd.DataFrame()
+    for idx in ordered_sv_idx:
+        seqtab_reorder[
+            seq_idx_to_sv_num[idx]
+        ] = seqtab_T.loc[idx]
 
     # Annoyingly, we need to pick a representitive actual sequence
     # from each sv to be it's champion for guppy.
@@ -73,8 +93,12 @@ def main():
 
     if out_sv_seqs_h:
         # Write out the sequences in fasta format, using the sv-id's generated above as an ID
-        for sv_id, seq in sv_num_to_seq.items():
-            out_sv_seqs_h.write(">%s:%s\n%s\n" % (sv_id, max_spec_for_sv[sv_id], seq))
+        for sv_idx in ordered_sv_idx:
+            out_sv_seqs_h.write(">%s:%s\n%s\n" % (
+                seq_idx_to_sv_num[sv_idx],
+                max_spec_for_sv[seq_idx_to_sv_num[sv_idx]],
+                sv_header[sv_idx]
+            ))
 
     # Now write the mapping and weights files
     # Both are headerless CSV format files
@@ -83,7 +107,7 @@ def main():
     # This is a bit of a clunky structure (relating to some historic cruft)
 
     if map_writer or weights_writer:
-        for spec, row in seqtab.iterrows():
+        for spec, row in seqtab_reorder.iterrows():
             row_nonzero = row[row > 0]
             for sv_id, count in row_nonzero.items():
                 if map_writer:
