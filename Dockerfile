@@ -1,6 +1,6 @@
-# golob/dada2-pplacer:0.5.0__bcw_0.3.1
+# golob/dada2-pplacer:0.6.0__bcw_0.3.1
 #
-# VERSION               0.5.0
+# VERSION               0.6.0
 
 FROM      alpine:3.8
 RUN apk add --no-cache bash \
