@@ -14,7 +14,6 @@ pandas>=0.20.3 \
 awscli>=1.15.14 \
 boto3>=1.7.14 \
 bucket_command_wrapper==0.3.1
-RUN apk del build-base
 ADD dada2_pplacer/dada2_taxonomy_to_tallies_wide.py /usr/local/bin/dada2-taxonomy-to-tallies-wide
 RUN chmod +x /usr/local/bin/dada2-taxonomy-to-tallies-wide
 ADD dada2_pplacer/dada2_seqtab_to_pplacer.py /usr/local/bin/dada2-seqtab-to-pplacer
