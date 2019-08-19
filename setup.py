@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='dada2-pplacer',
-    version='0.6.1',
+    version='0.8.0',
     description="""Convert output from dada2 to be compatible with pplacer / guppy / rppr pipelines
       """,
     url='https://github.com/jgolob/dada2-pplacer/',

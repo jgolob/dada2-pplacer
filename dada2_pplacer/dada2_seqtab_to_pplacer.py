@@ -4,8 +4,15 @@ import csv
 import argparse
 import sys
 import logging
+from multiprocessing import Pool
 
 logging.basicConfig(format='DADA-pplacer-mothur:%(levelname)s:%(asctime)s:%(message)s', level=logging.INFO)
+
+def lookup_sv_counts(spec_sv_tup):
+    spec_idx, ordered_sv_idx, seqtab_T = spec_sv_tup
+    return pd.SparseArray(
+        [seqtab_T.iat[sv_idx, spec_idx] for sv_idx in ordered_sv_idx]
+    )
 
 def main():
     args_parser = argparse.ArgumentParser(description="""A small utility to convert dada2 style
@@ -30,11 +37,14 @@ def main():
     args_parser.add_argument('--sharetable', '-t',
                              help="Write mothur-style sharetable to this location",
                              type=argparse.FileType('w'))
+    args_parser.add_argument('--cpus', '-C',
+                             help="Number of threads to use. Default is number of vCPU available",
+                             type=int, default=None)
 
     args = args_parser.parse_args()
 
     # Check to see if we've been tasked with anything. If not, we have nothing to do and should exit
-    if not (args.fasta_out_sequences or args.map or args.weights or args.sharetable):
+    if not (args.fasta_out_sequences or args.map or args.weights or args.sharetable or args.long):
         sys.exit("Nothing to do")
 
     # Just convert our handles over to something nicer
@@ -90,11 +100,21 @@ def main():
     seq_idx_to_sv_num = {idx: 'sv-%d' % (i + 1) for i, idx in enumerate(ordered_sv_idx)}
     # Transpose, Reorder and Rename into a new seqtab
     logging.info("Generating new seqtable")
-    seqtab_reorder = pd.DataFrame()
-    for idx in ordered_sv_idx:
-        seqtab_reorder[
-            seq_idx_to_sv_num[idx]
-        ] = seqtab_T.loc[idx]
+    convert_pool = Pool(args.cpus)
+    num_specimens = len(seqtab_T.columns)
+    seqtab_reorder = pd.DataFrame(
+        convert_pool.imap(
+            lookup_sv_counts,
+            zip(
+                range(num_specimens),
+                [ordered_sv_idx] * num_specimens,
+                [seqtab_T] * num_specimens
+            )
+        ),
+        columns=[seq_idx_to_sv_num[sv_idx] for sv_idx in ordered_sv_idx],
+        index=seqtab_T.columns
+    )
+    logging.info("Reordered seqtable done")
 
     # Annoyingly, we need to pick a representitive actual sequence
     # from each sv to be it's champion for guppy.
@@ -119,7 +139,7 @@ def main():
     # weight: sequence_id (sv_id here), specimen_sequence_id (sv_id:specimen here), count
     # This is a bit of a clunky structure (relating to some historic cruft)
 
-    if map_writer or weights_writer:
+    if map_writer or weights_writer or long_writer:
         logging.info("Writing out long, map, and/or weights")
         for spec, row in seqtab_reorder.iterrows():
             row_nonzero = row[row > 0]
@@ -134,7 +154,7 @@ def main():
                 if long_writer is not None:
                     long_writer.writerow([
                         spec,
-                        sv_id,
+                        sv_id + ":" + max_spec_for_sv[sv_id],
                         count
                     ])
 
